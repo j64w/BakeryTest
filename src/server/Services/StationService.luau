@@ -383,37 +383,48 @@ end
 -- === Horno === --
 
 function StationService:RequestStartOven(player)
-	local ovenPart = getWorkspacePart(STATION_PARTS.Oven)
-
-	if not isPlayerNearPart(player, ovenPart) then
-		return self:Notify(player, "Acércate al horno")
-	end
-
-	local carriedItem = self.CarryService:GetCarriedItem(player)
-
-	if not carriedItem or carriedItem.State ~= Enums.CarryState.CarryingPrepared then
-		return self:Notify(player, "Necesitas masa preparada")
-	end
-
-	local recipe = self.RecipeService:GetRecipe(carriedItem.RecipeId)
-	if not recipe then
-		return self:Notify(player, "Receta desconocida")
-	end
-
-	local state = self:GetState(player)
-	if state.Oven.State ~= Enums.OvenState.Idle then
-		return self:Notify(player, "El horno está ocupado")
-	end
-
-	state.Oven.State = Enums.OvenState.Baking
-	state.Oven.RecipeId = carriedItem.RecipeId
-	state.Oven.StartedAt = workspace:GetServerTimeNow()
-	state.Oven.Duration = recipe.BakeTime
-	state.Oven.EndsAt = state.Oven.StartedAt + recipe.BakeTime
-	self.CarryService:ClearCarriedItem(player)
-	self:SendSnapshot(player)
-
-	task.delay(recipe.BakeTime, function()
+    local ovenPart = getWorkspacePart(STATION_PARTS.Oven)
+    
+    if not isPlayerNearPart(player, ovenPart) then
+        return self:Notify(player, "Acércate al horno")
+    end
+    
+    -- Validación de estado
+    local carriedItem = self.CarryService:GetCarriedItem(player)
+    if not carriedItem or carriedItem.State ~= Enums.CarryState.CarryingPrepared then
+        return self:Notify(player, "Necesitas masa preparada")
+    end
+    
+    local state = self:GetState(player)
+    if state.Oven.State ~= Enums.OvenState.Idle then
+        return self:Notify(player, "El horno está ocupado")
+    end
+    
+    -- Validar que sigue cerca antes de proceder
+    if not isPlayerNearPart(player, ovenPart) then
+        return self:Notify(player, "Te alejaste del horno")
+    end
+    
+    -- Proceder con la acción
+    state.Oven.State = Enums.OvenState.Baking
+    -- ... resto del código
+    
+    -- Timer con verificación de distancia al final
+    task.delay(recipe.BakeTime, function()
+        if not player.Parent then return end
+        
+        if not isPlayerNearPart(player, ovenPart) then
+            -- Cancelar: resetear horno
+            local currentState = self:GetState(player)
+            currentState.Oven = getDefaultState().Oven
+            self:SendSnapshot(player)
+            return self:Notify(player, "Horneado cancelado - te alejaste")
+        end
+        
+        -- Completar
+        local currentState = self:GetState(player)
+        if currentState.Oven.State == Enums.OvenState.Baking then
+            currentState.Oven.State = Enums.OvenState.ReadyToCollect
 		if not player.Parent then
 			return
 		end

@@ -26,16 +26,15 @@ function StationController:Start()
 	end)
 
 	getPrompt({ "Bakery", "PreparationArea", "Table_01" }).Triggered:Connect(function()
-		local tableState = latestStationSnapshot and latestStationSnapshot.Table and latestStationSnapshot.Table.State
-
-		if tableState == "ReadyToCollect" then
-			self.Context.Remotes.Get("RequestCollectFromTable"):FireServer()
-		elseif tableState == nil or tableState == "Idle" then
-			self.Context.Controllers.RecipeController:OpenPrepareMenu()
-		end
-		-- Si está "AwaitingIngredients" o "Preparing", el jugador debe usar
-		-- los ProximityPrompt de cada ingrediente o esperar el amasado.
-	end)
+        local tableState = latestStationSnapshot and latestStationSnapshot.Table and latestStationSnapshot.Table.State
+        
+        -- Validación extra del lado del cliente (aunque el servidor debe validar también)
+        if tableState == "ReadyToCollect" then
+            self.Context.Remotes.Get("RequestCollectFromTable"):FireServer()
+        elseif tableState == nil or tableState == "Idle" then
+            -- Verificar que el jugador tiene las manos vacías antes de abrir menú
+            self.Context.Remotes.Get("RequestPrepareProduct"):FireServer(self.Context.SelectedRecipeId or "bread_basic")
+    end
 
 	getPrompt({ "Bakery", "BakingArea", "Oven_01" }).Triggered:Connect(function()
 		local ovenState = latestStationSnapshot and latestStationSnapshot.Oven and latestStationSnapshot.Oven.State

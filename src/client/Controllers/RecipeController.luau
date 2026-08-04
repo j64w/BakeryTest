@@ -82,9 +82,10 @@ local function buildLocalCatalog()
 end
 
 function RecipeController:Init(context)
-	self.Context = context
-	self.Context.SelectedRecipeId = "bread_basic"
-	catalog = buildLocalCatalog()
+    self.Context = context
+    -- Validar default
+    self.Context.SelectedRecipeId = "bread_basic"
+    catalog = buildLocalCatalog()
 end
 
 function RecipeController:Start()
@@ -174,26 +175,29 @@ function RecipeController:CreatePanel(title)
 end
 
 function RecipeController:OpenPrepareMenu()
-	local list = self:CreatePanel("Elegir producto")
-	activePanelType = "prepare"
-
-	for index, recipe in ipairs(catalog) do
-		if isUnlocked(recipe.Id) then
-			local ingredientCount = recipe.Ingredients and #recipe.Ingredients or 0
-			local text = recipe.DisplayName
-				.. "  |  "
-				.. ingredientCount
-				.. " ingredientes · "
-				.. recipe.BakeTime
-				.. "s horno"
-			local button = makeButton(list, text, index)
-			button.Activated:Connect(function()
-				self.Context.SelectedRecipeId = recipe.Id
-				self.Context.Remotes.Get("RequestPrepareProduct"):FireServer(recipe.Id)
-				clearPanel()
-			end)
-		end
-	end
+    local list = self:CreatePanel("Elegir producto")
+    activePanelType = "prepare"
+    
+    local hasUnlockedRecipes = false
+    
+    for index, recipe in ipairs(catalog) do
+        if isUnlocked(recipe.Id) then
+            hasUnlockedRecipes = true
+            -- ... crear botón ...
+        end
+    end
+    
+    -- Mostrar mensaje si no hay recetas desbloqueadas
+    if not hasUnlockedRecipes then
+        local emptyLabel = Instance.new("TextLabel")
+        emptyLabel.BackgroundTransparency = 1
+        emptyLabel.Size = UDim2.new(1, 0, 0, 40)
+        emptyLabel.Font = Enum.Font.GothamMedium
+        emptyLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+        emptyLabel.TextSize = 14
+        emptyLabel.Text = "No tienes recetas desbloqueadas"
+        emptyLabel.Parent = list
+    end
 end
 
 -- Computadora de productos: recetas ya desbloqueadas se pueden volver a

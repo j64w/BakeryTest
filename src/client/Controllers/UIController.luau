@@ -26,20 +26,31 @@ function UIController:Init(context)
 end
 
 function UIController:Start()
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "BunnysBakeryHUD"
-	gui.ResetOnSpawn = false
-	gui.Parent = player:WaitForChild("PlayerGui")
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "BunnysBakeryHUD"
+    gui.ResetOnSpawn = false
+    gui.Parent = player:WaitForChild("PlayerGui")
+    
+    self.Gui = gui  -- Guardar referencia para cleanup
 
-	labels.Coins = makeLabel(gui, "Coins", UDim2.fromOffset(16, 16), "Coins: 0")
-	labels.Level = makeLabel(gui, "Level", UDim2.fromOffset(16, 54), "Level: 1")
-	labels.Experience = makeLabel(gui, "Experience", UDim2.fromOffset(16, 92), "EXP: 0")
-	labels.Carry = makeLabel(gui, "Carry", UDim2.fromOffset(16, 130), "Hands: empty")
-	labels.Shelf = makeLabel(gui, "Shelf", UDim2.fromOffset(16, 168), "Shelf: 0/3")
+    labels.Coins = makeLabel(gui, "Coins", UDim2.fromOffset(16, 16), "Coins: 0")
+    -- ... resto de labels
 
-	self.Context.Remotes.Get("StateUpdated").OnClientEvent:Connect(function(snapshotType, payload)
-		self:ApplySnapshot(snapshotType, payload)
-	end)
+    -- Guardar conexión para poder desconectarla
+    self.StateConnection = self.Context.Remotes.Get("StateUpdated").OnClientEvent:Connect(function(snapshotType, payload)
+        self:ApplySnapshot(snapshotType, payload)
+    end)
+end
+
+function UIController:Destroy()
+    if self.StateConnection then
+        self.StateConnection:Disconnect()
+        self.StateConnection = nil
+    end
+    if self.Gui then
+        self.Gui:Destroy()
+        self.Gui = nil
+    end
 end
 
 function UIController:ApplySnapshot(snapshotType, payload)

@@ -291,10 +291,49 @@ function StationFeedbackController:Start()
 		end
 	end)
 
+	if self.OvenDoor and self.OvenDoorClosedCFrame then
+        self.OvenDoor.CFrame = self.OvenDoorClosedCFrame
+        ovenDoorOpen = false
+    end
+
 	RunService.RenderStepped:Connect(function()
 		self:UpdateProgress()
 	end)
+
+	player.CharacterRemoving:Connect(function()
+        self:Cleanup()
+    end)
 end
+
+function StationFeedbackController:Cleanup()
+    -- Limpiar widgets
+    for _, widget in pairs(widgets) do
+        if widget.Billboard and widget.Billboard.Parent then
+            widget.Billboard:Destroy()
+        end
+    end
+    widgets = {}
+    
+    -- Limpiar HUD
+    if hud and hud.Parent then
+        hud:Destroy()
+        hud = nil
+    end
+    hudRows = {}
+    
+    -- Limpiar partículas
+    if steamEmitter and steamEmitter.Parent then
+        steamEmitter:Destroy()
+        steamEmitter = nil
+    end
+    
+    -- Resetear estado
+    stationSnapshot = nil
+    shelfSnapshot = nil
+    previousState = {}
+    ovenDoorOpen = false
+end
+
 
 -- Puerta del horno (sube al hornear) + humo mientras cocina.
 function StationFeedbackController:SetupOvenExtras()
@@ -325,16 +364,26 @@ function StationFeedbackController:SetupOvenExtras()
 end
 
 function StationFeedbackController:SetOvenDoorOpen(open)
-	if not self.OvenDoor or ovenDoorOpen == open then
-		return
-	end
-
-	ovenDoorOpen = open
-	local targetCFrame = open and (self.OvenDoorClosedCFrame + Vector3.new(0, 1.6, 0)) or self.OvenDoorClosedCFrame
-
-	TweenService:Create(self.OvenDoor, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		CFrame = targetCFrame,
-	}):Play()
+    if not self.OvenDoor or not self.OvenDoorClosedCFrame then
+        return
+    end
+    
+    -- Cancelar tween anterior si existe
+    if self.CurrentDoorTween then
+        self.CurrentDoorTween:Cancel()
+    end
+    
+    ovenDoorOpen = open
+    local targetCFrame = open 
+        and (self.OvenDoorClosedCFrame + Vector3.new(0, 1.6, 0)) 
+        or self.OvenDoorClosedCFrame
+    
+    self.CurrentDoorTween = TweenService:Create(
+        self.OvenDoor, 
+        TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), 
+        { CFrame = targetCFrame }
+    )
+    self.CurrentDoorTween:Play()
 end
 
 function StationFeedbackController:ApplyImmediateStationState()

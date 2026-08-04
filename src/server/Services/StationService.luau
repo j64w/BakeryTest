@@ -5,6 +5,8 @@ local Debris = game:GetService("Debris")
 
 local Enums = require(ReplicatedStorage.Shared.Modules.Enums)
 local IngredientData = require(ReplicatedStorage.Shared.Modules.IngredientData)
+local RateLimiter = require(script.Parent.Parent.Modules.RateLimiter)
+local AntiCheat = require(script.Parent.Parent.Modules.AntiCheat)
 
 local StationService = {}
 
@@ -73,29 +75,45 @@ end
 
 function StationService:Start()
 	self.Context.Remotes.Get("RequestPrepareProduct").OnServerEvent:Connect(function(player, recipeId)
-		self:RequestPrepareProduct(player, recipeId)
+        local canProceed = RateLimiter:CanProceed(player, "prepare_product", 0.5)
+        if not canProceed then return end
+
+        self:RequestPrepareProduct(player, recipeId)
 	end)
 
 	self.Context.Remotes.Get("RequestPressIngredient").OnServerEvent:Connect(function(player, index)
+		        local canProceed = RateLimiter:CanProceed(player, "prepare_product", 0.5)
+        if not canProceed then return end
+
 		self:RequestPressIngredient(player, index)
 	end)
 
 	self.Context.Remotes.Get("RequestCollectFromTable").OnServerEvent:Connect(function(player)
+        local canProceed = RateLimiter:CanProceed(player, "prepare_product", 0.5)
+        if not canProceed then return end
+
 		self:RequestCollectFromTable(player)
 	end)
 
 	self.Context.Remotes.Get("RequestStartOven").OnServerEvent:Connect(function(player)
+        local canProceed = RateLimiter:CanProceed(player, "prepare_product", 0.5)
+        if not canProceed then return end
+
 		self:RequestStartOven(player)
 	end)
 
 	self.Context.Remotes.Get("RequestCollectFromOven").OnServerEvent:Connect(function(player)
+        local canProceed = RateLimiter:CanProceed(player, "prepare_product", 0.5)
+        if not canProceed then return end
+
 		self:RequestCollectFromOven(player)
 	end)
 
-	Players.PlayerRemoving:Connect(function(player)
-		self:DespawnIngredients(player)
-		stationStateByPlayer[player] = nil
-	end)
+    Players.PlayerRemoving:Connect(function(player)
+        RateLimiter:CleanupPlayer(player)
+        self:DespawnIngredients(player)
+        stationStateByPlayer[player] = nil
+    end)
 
 	self.Context.Events.Connect("PlayerReady", function(player)
 		self:GetState(player)
@@ -117,6 +135,10 @@ function StationService:RequestPrepareProduct(player, recipeId)
 	recipeId = recipeId or "bread_basic"
 
 	local tablePart = getWorkspacePart(STATION_PARTS.Table)
+
+    if not AntiCheat:ValidateDistance(player, tablePart, 14) then
+        return self:Notify(player, "Acércate a la mesa")
+    end
 
 	if not isPlayerNearPart(player, tablePart) then
 		return self:Notify(player, "Acércate a la mesa")
@@ -385,11 +407,10 @@ end
 function StationService:RequestStartOven(player)
     local ovenPart = getWorkspacePart(STATION_PARTS.Oven)
     
-    if not isPlayerNearPart(player, ovenPart) then
+    if not AntiCheat:ValidateDistance(player, ovenPart, 14) then
         return self:Notify(player, "Acércate al horno")
     end
     
-    -- Validación de estado
     local carriedItem = self.CarryService:GetCarriedItem(player)
     if not carriedItem or carriedItem.State ~= Enums.CarryState.CarryingPrepared then
         return self:Notify(player, "Necesitas masa preparada")
@@ -400,46 +421,43 @@ function StationService:RequestStartOven(player)
         return self:Notify(player, "El horno está ocupado")
     end
     
-    -- Validar que sigue cerca antes de proceder
-    if not isPlayerNearPart(player, ovenPart) then
-        return self:Notify(player, "Te alejaste del horno")
-    end
+    local recipe = self.RecipeService:GetRecipe(carriedItem.RecipeId)
+    if not recipe then return end
     
-    -- Proceder con la acción
     state.Oven.State = Enums.OvenState.Baking
-    -- ... resto del código
+    state.Oven.RecipeId = carriedItem.RecipeId
+    state.Oven.StartedAt = workspace:GetServerTimeNow()
+    state.Oven.Duration = recipe.BakeTime
+    state.Oven.EndsAt = state.Oven.StartedAt + recipe.BakeTime
     
-    -- Timer con verificación de distancia al final
-    task.delay(recipe.BakeTime, function()
+    self.CarryService:ClearCarriedItem(player)
+    self:SendSnapshot(player)
+    
+    -- Usar validación continua
+    AntiCheat:ValidateDistanceContinuous(player, ovenPart, 20, recipe.BakeTime, function(success, err)
         if not player.Parent then return end
         
-        if not isPlayerNearPart(player, ovenPart) then
-            -- Cancelar: resetear horno
+        if not success then
+            -- Cancelar horneado
             local currentState = self:GetState(player)
             currentState.Oven = getDefaultState().Oven
             self:SendSnapshot(player)
-            return self:Notify(player, "Horneado cancelado - te alejaste")
+            self:Notify(player, "Horneado cancelado - te alejaste demasiado")
+            return
         end
         
-        -- Completar
+        -- Completar horneado
         local currentState = self:GetState(player)
         if currentState.Oven.State == Enums.OvenState.Baking then
             currentState.Oven.State = Enums.OvenState.ReadyToCollect
-		if not player.Parent then
-			return
-		end
-
-		local currentState = self:GetState(player)
-		if currentState.Oven.State == Enums.OvenState.Baking then
-			currentState.Oven.State = Enums.OvenState.ReadyToCollect
-			currentState.Oven.StartedAt = nil
-			currentState.Oven.EndsAt = nil
-			currentState.Oven.Duration = nil
-			self:SendSnapshot(player)
-			self.Context.Events.Fire("ProductBaked", player, currentState.Oven.RecipeId)
-			self:Notify(player, "El pan está listo en el horno")
-		end
-	end)
+            currentState.Oven.StartedAt = nil
+            currentState.Oven.EndsAt = nil
+            currentState.Oven.Duration = nil
+            self:SendSnapshot(player)
+            self.Context.Events.Fire("ProductBaked", player, currentState.Oven.RecipeId)
+            self:Notify(player, "El pan está listo en el horno")
+        end
+    end)
 end
 
 function StationService:RequestCollectFromOven(player)

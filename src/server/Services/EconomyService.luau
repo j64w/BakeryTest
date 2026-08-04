@@ -39,15 +39,25 @@ function EconomyService:AddExperience(player, amount)
 end
 
 function EconomyService:GetLevelForExperience(experience)
-	local bestLevel = 1
-
-	for level, requiredExperience in pairs(LevelData) do
-		if experience >= requiredExperience and level > bestLevel then
-			bestLevel = level
-		end
-	end
-
-	return bestLevel
+    local bestLevel = 1
+    
+    -- Convertir a array ordenado
+    local levels = {}
+    for level, req in pairs(LevelData) do
+        table.insert(levels, { Level = level, Required = req })
+    end
+    
+    table.sort(levels, function(a, b) return a.Level < b.Level end)
+    
+    for _, entry in ipairs(levels) do
+        if experience >= entry.Required then
+            bestLevel = entry.Level
+        else
+            break
+        end
+    end
+    
+    return bestLevel
 end
 
 function EconomyService:SendSnapshot(player)

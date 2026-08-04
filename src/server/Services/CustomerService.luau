@@ -295,31 +295,45 @@ function CustomerService:Start()
 			task.wait(math.random(StationData.Customers.MinSpawnDelay, StationData.Customers.MaxSpawnDelay))
 		end
 	end)
+
+	task.spawn(function()
+        while true do
+            task.wait(300) -- Cada 5 minutos
+            local now = os.clock()
+            for player, cache in pairs(friendCache) do
+                if not player.Parent or (now - cache.FetchedAt) > FRIEND_CACHE_SECONDS then
+                    friendCache[player] = nil
+                end
+            end
+        end
+    end)
 end
 
 -- Elige el mejor producto con stock y reserva 1-3 unidades para el
 -- pedido del cliente (si comprás 2 panes, después aparecen 2 bolsas).
 function CustomerService:GenerateOrder(player)
-	local recipeId, recipe = self:FindAvailableProduct(player)
-
-	if not recipeId or not recipe then
-		return nil
-	end
-
-	local stock = self.ShelfService:GetStockSnapshot(player)
-	local available = stock[recipeId] or 0
-
-	if available <= 0 then
-		return nil
-	end
-
-	local quantity = math.random(1, math.min(MAX_ITEMS_PER_ORDER, available))
-
-	return {
-		RecipeId = recipeId,
-		Recipe = recipe,
-		Quantity = quantity,
-	}
+    local recipeId, recipe = self:FindAvailableProduct(player)
+    if not recipeId or not recipe then return nil end
+    
+    local stock = self.ShelfService:GetStockSnapshot(player)
+    local available = stock[recipeId] or 0
+    if available <= 0 then return nil end
+    
+    local quantity = math.random(1, math.min(MAX_ITEMS_PER_ORDER, available))
+    
+    -- RESERVAR stock temporalmente
+    for i = 1, quantity do
+        local removed = self.ShelfService:TryRemoveStock(player, recipeId)
+        if not removed then
+            -- Devolver lo que se pudo reservar
+            for j = 1, i - 1 do
+                self.ShelfService:TryAddStock(player, recipeId)
+            end
+            return nil
+        end
+    end
+    
+    return { RecipeId = recipeId, Recipe = recipe, Quantity = quantity, Reserved = true }
 end
 
 function CustomerService:TrySpawnCustomer(player)
@@ -350,28 +364,34 @@ function CustomerService:TrySpawnCustomer(player)
 	end)
 end
 
--- Recorrido completo: entra, camina hasta el estante, se para delante
--- de la caja (sin atravesarla) y espera. El jugador tiene que:
---  1) hacerle click al cliente para atenderlo,
---  2) hacerle click a cada bolsa de su pedido,
---  3) cobrarle con el ProximityPrompt de la caja.
 function CustomerService:RunCustomerVisit(player, order)
-	local entrance = getPart(CUSTOMER_PATHS.Entrance)
-	local exit = getPart(CUSTOMER_PATHS.Exit)
-	local register = getPart(CUSTOMER_PATHS.Register)
-	local shelf = getPart(CUSTOMER_PATHS.Shelf)
+    local entrance = getPart(CUSTOMER_PATHS.Entrance)
+    local exit = getPart(CUSTOMER_PATHS.Exit)
+    local register = getPart(CUSTOMER_PATHS.Register)
+    local shelf = getPart(CUSTOMER_PATHS.Shelf)
 
-	if not entrance or not exit or not register or not shelf then
-		warn("[CustomerService] Falta alguna parte de CustomerArea/DisplayArea en el mapa (revisa Workspace.Bakery)")
-		self:CompleteSale(player, order)
-		return
-	end
+    if not entrance or not exit or not register or not shelf then
+        warn("[CustomerService] Falta alguna parte del mapa")
+        self:ReturnReservedStock(player, order)  -- Devolver stock reservado
+        return
+    end
 
-	local model = buildCustomerModel(player)
-	if not model then
-		self:CompleteSale(player, order)
-		return
-	end
+    local model = buildCustomerModel(player)
+    if not model then
+        self:ReturnReservedStock(player, order)
+        return
+    end
+
+    local function cleanup()
+        registerBusyByPlayer[player] = false
+        if model and model.Parent then
+            model:Destroy()
+        end
+        -- Devolver stock si no se completó la venta
+        if order and order.Reserved then
+            self:ReturnReservedStock(player, order)
+        end
+    end
 
 	model:PivotTo(CFrame.new(entrance.Position))
 	model.Parent = self.CustomersFolder
@@ -385,7 +405,6 @@ function CustomerService:RunCustomerVisit(player, order)
 
 	Debris:AddItem(model, (MOVE_TIMEOUT + ATTEND_CLICK_TIMEOUT + BAG_CLICK_TIMEOUT + PAY_PROMPT_TIMEOUT) * 1.2)
 
-	-- 1) Camina hasta el estante a "revisar" el producto.
 	moveTo(humanoid, getStandPoint(shelf, entrance.Position.Z, 1.5), MOVE_TIMEOUT)
 	if humanoid.Parent then
 		task.wait(BROWSE_TIME)
@@ -426,10 +445,18 @@ function CustomerService:RunCustomerVisit(player, order)
 	if model.Parent then
 		model:Destroy()
 	end
+
+	cleanup()
 end
 
--- Paso 1: el cliente espera parado con un cartel de "Click para
--- atender" hasta que el jugador le hace click.
+function CustomerService:ReturnReservedStock(player, order)
+    if not order or not order.Reserved then return end
+    for i = 1, order.Quantity do
+        self.ShelfService:TryAddStock(player, order.RecipeId)
+    end
+    order.Reserved = false
+end
+
 function CustomerService:WaitToBeAttended(player, model)
 	local anchor = model:FindFirstChild("Head") or model.PrimaryPart or model:FindFirstChild("HumanoidRootPart")
 	local hint = anchor and attachHint(anchor, "🛎 Click para atender")
@@ -568,17 +595,18 @@ end
 
 function CustomerService:CompleteSale(player, order)
 	-- Consumir el stock recién cuando el cliente paga.
-	for i = 1, order.Quantity do
-		local success = self.ShelfService:TryRemoveStock(player, order.RecipeId)
 
-		if not success then
-			self.Context.Remotes.Get("Notify"):FireClient(
-				player,
-				"No había suficiente stock para completar la venta."
-			)
-			return
-		end
-	end
+    if not order.Reserved then
+        for i = 1, order.Quantity do
+            local success = self.ShelfService:TryRemoveStock(player, order.RecipeId)
+            if not success then
+                self.Context.Remotes.Get("Notify"):FireClient(
+                    player, "No había suficiente stock para completar la venta."
+                )
+                return
+            end
+        end
+    end
 
 	local totalCoins = order.Recipe.SellPrice * order.Quantity
 	local totalExperience = order.Recipe.SellExperience * order.Quantity

@@ -3,6 +3,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Enums = require(ReplicatedStorage.Shared.Modules.Enums)
 local StationData = require(ReplicatedStorage.Shared.Modules.StationData)
+local RateLimiter = require(script.Parent.Parent.Modules.RateLimiter)
 
 local ShelfService = {}
 
@@ -43,6 +44,9 @@ end
 
 function ShelfService:Start()
 	self.Context.Remotes.Get("RequestPlaceOnShelf").OnServerEvent:Connect(function(player)
+        local canProceed = RateLimiter:CanProceed(player, "place_shelf", 0.5)
+        if not canProceed then return end
+		
 		self:RequestPlaceOnShelf(player)
 	end)
 

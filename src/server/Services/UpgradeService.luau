@@ -1,5 +1,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StationData = require(ReplicatedStorage.Shared.Modules.StationData)
+local RateLimiter = require(script.Parent.Parent.Modules.RateLimiter)
 
 local UpgradeService = {}
 
@@ -29,6 +30,9 @@ end
 
 function UpgradeService:Start()
     self.Context.Remotes.Get("RequestUpgrade").OnServerEvent:Connect(function(player, category, stat)
+            local canProceed = RateLimiter:CanProceed(player, "upgrade", 0.5)
+        if not canProceed then return end
+        
         self:RequestUpgrade(player, category, stat)
     end)
     

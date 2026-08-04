@@ -1,6 +1,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local RecipeData = require(ReplicatedStorage.Shared.Modules.RecipeData)
+local RateLimiter = require(script.Parent.Parent.Modules.RateLimiter)
 
 local RecipeService = {}
 
@@ -39,6 +40,9 @@ end
 
 function RecipeService:Start()
 	self.Context.Remotes.Get("RequestBuyRecipe").OnServerEvent:Connect(function(player, recipeId)
+	    local canProceed = RateLimiter:CanProceed(player, "buy_recipe", 0.5)
+        if not canProceed then return end
+		
 		self:RequestBuyRecipe(player, recipeId)
 	end)
 

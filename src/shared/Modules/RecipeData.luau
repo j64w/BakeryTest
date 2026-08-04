@@ -1,0 +1,40 @@
+return {
+	bread_basic = {
+		DisplayName = "Pan basico",
+		Rarity = "Common",
+		RequiredLevel = 1,
+		UnlockCost = 0,
+		PrepTime = 3,
+		BakeTime = 8,
+		SellPrice = 5,
+		SellExperience = 2,
+		ModelName = "BreadBasic",
+		Ingredients = { "flour", "water", "yeast" },
+	},
+
+	croissant = {
+		DisplayName = "Croissant",
+		Rarity = "Uncommon",
+		RequiredLevel = 1,
+		UnlockCost = 40,
+		PrepTime = 5,
+		BakeTime = 10,
+		SellPrice = 12,
+		SellExperience = 4,
+		ModelName = "Croissant",
+		Ingredients = { "flour", "butter", "water", "sugar" },
+	},
+
+	brioche = {
+		DisplayName = "Brioche",
+		Rarity = "Uncommon",
+		RequiredLevel = 1,
+		UnlockCost = 75,
+		PrepTime = 6,
+		BakeTime = 12,
+		SellPrice = 18,
+		SellExperience = 6,
+		ModelName = "Brioche",
+		Ingredients = { "flour", "butter", "egg", "milk", "sugar" },
+	},
+}

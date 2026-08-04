@@ -9,6 +9,7 @@ return {
 		SellPrice = 5,
 		SellExperience = 2,
 		ModelName = "BreadBasic",
+		Color = Color3.fromRGB(214, 168, 110),
 		Ingredients = { "flour", "water", "yeast" },
 	},
 
@@ -22,6 +23,7 @@ return {
 		SellPrice = 12,
 		SellExperience = 4,
 		ModelName = "Croissant",
+		Color = Color3.fromRGB(232, 187, 96),
 		Ingredients = { "flour", "butter", "water", "sugar" },
 	},
 
@@ -35,6 +37,7 @@ return {
 		SellPrice = 18,
 		SellExperience = 6,
 		ModelName = "Brioche",
+		Color = Color3.fromRGB(240, 199, 120),
 		Ingredients = { "flour", "butter", "egg", "milk", "sugar" },
 	},
 }

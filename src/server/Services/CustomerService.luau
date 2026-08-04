@@ -299,7 +299,7 @@ end
 
 -- Elige el mejor producto con stock y reserva 1-3 unidades para el
 -- pedido del cliente (si comprás 2 panes, después aparecen 2 bolsas).
-function CustomerService:ReserveOrder(player)
+function CustomerService:GenerateOrder(player)
 	local recipeId, recipe = self:FindAvailableProduct(player)
 
 	if not recipeId or not recipe then
@@ -308,22 +308,18 @@ function CustomerService:ReserveOrder(player)
 
 	local stock = self.ShelfService:GetStockSnapshot(player)
 	local available = stock[recipeId] or 0
-	local desired = math.random(1, math.min(MAX_ITEMS_PER_ORDER, available))
 
-	local reserved = 0
-	for _ = 1, desired do
-		if self.ShelfService:TryRemoveStock(player, recipeId) then
-			reserved += 1
-		else
-			break
-		end
-	end
-
-	if reserved == 0 then
+	if available <= 0 then
 		return nil
 	end
 
-	return { RecipeId = recipeId, Recipe = recipe, Quantity = reserved }
+	local quantity = math.random(1, math.min(MAX_ITEMS_PER_ORDER, available))
+
+	return {
+		RecipeId = recipeId,
+		Recipe = recipe,
+		Quantity = quantity,
+	}
 end
 
 function CustomerService:TrySpawnCustomer(player)
@@ -332,7 +328,7 @@ function CustomerService:TrySpawnCustomer(player)
 		return
 	end
 
-	local order = self:ReserveOrder(player)
+	local order = self:GenerateOrder(player)
 	if not order then
 		return
 	end
@@ -571,15 +567,41 @@ function CustomerService:WaitForPayment(player, order)
 end
 
 function CustomerService:CompleteSale(player, order)
+	-- Consumir el stock recién cuando el cliente paga.
+	for i = 1, order.Quantity do
+		local success = self.ShelfService:TryRemoveStock(player, order.RecipeId)
+
+		if not success then
+			self.Context.Remotes.Get("Notify"):FireClient(
+				player,
+				"No había suficiente stock para completar la venta."
+			)
+			return
+		end
+	end
+
 	local totalCoins = order.Recipe.SellPrice * order.Quantity
 	local totalExperience = order.Recipe.SellExperience * order.Quantity
 
 	self.EconomyService:AddCoins(player, totalCoins)
 	self.EconomyService:AddExperience(player, totalExperience)
-	self.Context.Events.Fire("ProductSold", player, order.RecipeId, totalCoins, totalExperience)
+
+	self.Context.Events.Fire(
+		"ProductSold",
+		player,
+		order.RecipeId,
+		totalCoins,
+		totalExperience
+	)
+
 	self.Context.Remotes.Get("Notify"):FireClient(
 		player,
-		order.Quantity .. "x " .. order.Recipe.DisplayName .. " cobrado +" .. totalCoins .. " monedas"
+		order.Quantity
+			.. "x "
+			.. order.Recipe.DisplayName
+			.. " cobrado +"
+			.. totalCoins
+			.. " monedas"
 	)
 end
 
